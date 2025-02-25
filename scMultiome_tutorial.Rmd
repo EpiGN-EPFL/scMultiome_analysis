@@ -2,7 +2,7 @@
 title: "Single cell RNA+ATAC tutorial"
 author: "Hanrong Hu"
 date: "2025-02-25"
-output: html_document
+output: md_document
 ---
 
 ```{r}
