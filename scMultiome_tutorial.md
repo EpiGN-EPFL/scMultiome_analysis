@@ -37,7 +37,7 @@ We start by loading the libraries:
     library(Matrix)
     library(dplyr)
     library(tidyr)
-    library(knitr)
+    library(knitr) # This is to make rendered Markdown files look pretty
 
 **Important**: Both `Seurat` and `Signac` are under active development.
 You can check the package version like this:
@@ -129,8 +129,11 @@ MULTIOME_RNA_GLI3_A4_S2</td>
 
 From this, we can see that there are three paired RNA+ATAC datasets: two
 CRISPR knockouts and one control. Each pair corresponds to a specific
-sample ID: - B4: CRISPR KO with a 29 and 41 bp deletion in GLI3 - D3:
-CRISPR KO with a 4 and 8 bp insertion in GLI3 - A4: Control (WT)
+sample ID:
+
+-   B4: CRISPR KO with a 29 and 41 bp deletion in GLI3
+-   D3: CRISPR KO with a 4 and 8 bp insertion in GLI3
+-   A4: Control (WT)
 
 **PS**: [GLI3](https://en.wikipedia.org/wiki/GLI3) is zinc finger
 protein which is involved in Sonic hedgehog (Shh) signaling.
