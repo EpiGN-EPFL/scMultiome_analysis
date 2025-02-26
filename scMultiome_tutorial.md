@@ -64,16 +64,16 @@ or from the downloaded files:
       ) %>%
       group_by(Characteristics.genetic.modification.) %>%
       summarize(
-        ATAC_samples = paste(Assay.Name[Modality == "ATAC"], collapse = ", "),
-        RNA_samples = paste(Assay.Name[Modality == "RNA"], collapse = ", ")
+        ATAC_samples = paste(unique(Assay.Name[Modality == "ATAC"]), collapse = ", "),
+        RNA_samples = paste(unique(Assay.Name[Modality == "RNA"]), collapse = ", ")
       ) %>%
       kable()
 
 <table>
 <colgroup>
-<col style="width: 12%" />
-<col style="width: 44%" />
-<col style="width: 42%" />
+<col style="width: 37%" />
+<col style="width: 32%" />
+<col style="width: 30%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -87,49 +87,32 @@ or from the downloaded files:
 <td style="text-align: left;">CRISPR Cas9 mediated GLI3 knockout (29 and
 41 bp deletion)</td>
 <td style="text-align: left;">MULTIOME_ATAC_GLI3_B4_S1,
-MULTIOME_ATAC_GLI3_B4_S1, MULTIOME_ATAC_GLI3_B4_S1,
-MULTIOME_ATAC_GLI3_B4_S1, MULTIOME_ATAC_GLI3_B4_S2,
-MULTIOME_ATAC_GLI3_B4_S2, MULTIOME_ATAC_GLI3_B4_S2,
 MULTIOME_ATAC_GLI3_B4_S2</td>
 <td style="text-align: left;">MULTIOME_RNA_GLI3_B4_S1,
-MULTIOME_RNA_GLI3_B4_S1, MULTIOME_RNA_GLI3_B4_S1,
-MULTIOME_RNA_GLI3_B4_S1, MULTIOME_RNA_GLI3_B4_S2,
-MULTIOME_RNA_GLI3_B4_S2, MULTIOME_RNA_GLI3_B4_S2,
 MULTIOME_RNA_GLI3_B4_S2</td>
 </tr>
 <tr class="even">
 <td style="text-align: left;">CRISPR Cas9 mediated GLI3 knockout (4 and
 8 bp insertion)</td>
 <td style="text-align: left;">MULTIOME_ATAC_GLI3_D3_S1,
-MULTIOME_ATAC_GLI3_D3_S1, MULTIOME_ATAC_GLI3_D3_S1,
-MULTIOME_ATAC_GLI3_D3_S1, MULTIOME_ATAC_GLI3_D3_S2,
-MULTIOME_ATAC_GLI3_D3_S2, MULTIOME_ATAC_GLI3_D3_S2,
 MULTIOME_ATAC_GLI3_D3_S2</td>
 <td style="text-align: left;">MULTIOME_RNA_GLI3_D3_S1,
-MULTIOME_RNA_GLI3_D3_S1, MULTIOME_RNA_GLI3_D3_S1,
-MULTIOME_RNA_GLI3_D3_S1, MULTIOME_RNA_GLI3_D3_S2,
-MULTIOME_RNA_GLI3_D3_S2, MULTIOME_RNA_GLI3_D3_S2,
 MULTIOME_RNA_GLI3_D3_S2</td>
 </tr>
 <tr class="odd">
 <td style="text-align: left;">none</td>
 <td style="text-align: left;">MULTIOME_ATAC_GLI3_A4_S1,
-MULTIOME_ATAC_GLI3_A4_S1, MULTIOME_ATAC_GLI3_A4_S1,
-MULTIOME_ATAC_GLI3_A4_S1, MULTIOME_ATAC_GLI3_A4_S2,
-MULTIOME_ATAC_GLI3_A4_S2, MULTIOME_ATAC_GLI3_A4_S2,
 MULTIOME_ATAC_GLI3_A4_S2</td>
 <td style="text-align: left;">MULTIOME_RNA_GLI3_A4_S1,
-MULTIOME_RNA_GLI3_A4_S1, MULTIOME_RNA_GLI3_A4_S1,
-MULTIOME_RNA_GLI3_A4_S1, MULTIOME_RNA_GLI3_A4_S2,
-MULTIOME_RNA_GLI3_A4_S2, MULTIOME_RNA_GLI3_A4_S2,
 MULTIOME_RNA_GLI3_A4_S2</td>
 </tr>
 </tbody>
 </table>
 
-From this, we can see that there are three paired RNA+ATAC datasets: two
-CRISPR knockouts and one control. Each pair corresponds to a specific
-sample ID:
+S1 and S2 refers to the the same biological sample but were sequenced
+across two different lanes. We can see that there are three paired
+RNA+ATAC datasets: two CRISPR knockouts and one control. Each pair
+corresponds to a specific sample ID:
 
 -   B4: CRISPR KO with a 29 and 41 bp deletion in GLI3
 -   D3: CRISPR KO with a 4 and 8 bp insertion in GLI3
