@@ -26,6 +26,7 @@ library(Signac)
 library(Matrix)
 library(dplyr)
 library(tidyr)
+library(knitr)
 ```
 
 **Important**: Both `Seurat` and `Signac` are under active development. You can check the package version like this:
@@ -38,7 +39,6 @@ Before we dive into the actual analysis, it is always good to check what are the
 
 ```{r}
 sample_info <- read.csv("data/E-MTAB-12002/E-MTAB-12002.sdrf.txt", sep = '\t')
-head(sample_info)
 ```
 
 ```{r}
@@ -54,7 +54,8 @@ sample_info %>%
   summarize(
     ATAC_samples = paste(Assay.Name[Modality == "ATAC"], collapse = ", "),
     RNA_samples = paste(Assay.Name[Modality == "RNA"], collapse = ", ")
-  )
+  ) %>%
+  kable()
 ```
 
 From this, we can see that there are three paired RNA+ATAC datasets: two CRISPR knockouts and one control. Each pair corresponds to a specific sample ID:
