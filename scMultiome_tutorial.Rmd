@@ -5,7 +5,61 @@ date: "2025-02-25"
 output: md_document
 ---
 
-```{r}
-1+1
+# Introduction 
+
+With the advancement of single-cell technologies, we can now profile multiple modalities in the **same** cell. There are many examples of such approaches:
+
+TODO: Add relevant papers.
+
+One of the most popular methods is the [Epi Multiome ATAC + Gene Expression](https://www.10xgenomics.com/products/epi-multiome) from 10x Genomics. You can find the workflow [here](https://www.10xgenomics.com/support/epi-multiome).
+
+In this tutorial, we will use single-cell RNA-ATAC multiomic data from 18-day-old brain organoids, as described in the study [Inferring and perturbing cell fate regulomes in human brain organoids](https://www.nature.com/articles/s41586-022-05279-8#Sec5). We will analyze the scMultiome data in `R` using [`Seurat`](https://satijalab.org/seurat/) and [`Signac`](https://stuartlab.org/signac/)
+
+**Optional**: You can download the raw sequencing data (FASTQ files) from [E-MTAB-12002](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-12002). For this tutorial, we re-generated transcript count and peak accessibility matrices using [`cellranger-arc count`](https://www.10xgenomics.com/support/software/cell-ranger-arc/latest/analysis/single-library-analysis) (v2.0.2) and mapped to refdata-cellranger-arc-GRCh38-2020-A-2.0.0. **Note**: we typically run the cellranger pipelines on HPC clusters. 
+
+# Part 1 - Setup
+
+We start by loading the libraries: 
+```{r, message=FALSE}
+library(Seurat)
+library(Signac)
+library(Matrix)
+library(dplyr)
+library(tidyr)
 ```
 
+**Important**: Both `Seurat` and `Signac` are under active development. You can check the package version like this:
+
+```{r}
+packageVersion("Seurat")
+```
+
+Before we dive into the actual analysis, it is always good to check what are the samples we are dealing with. You can check the detailed sample information [here](https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-12002/sdrf), or from the downloaded files: 
+
+```{r}
+sample_info <- read.csv("data/E-MTAB-12002/E-MTAB-12002.sdrf.txt", sep = '\t')
+head(sample_info)
+```
+
+```{r}
+sample_info %>%
+  mutate(
+    Modality = case_when(
+      grepl("ATAC", Assay.Name) ~ "ATAC",
+      grepl("RNA", Assay.Name) ~ "RNA",
+      TRUE ~ "Other"
+    )
+  ) %>%
+  group_by(Characteristics.genetic.modification.) %>%
+  summarize(
+    ATAC_samples = paste(Assay.Name[Modality == "ATAC"], collapse = ", "),
+    RNA_samples = paste(Assay.Name[Modality == "RNA"], collapse = ", ")
+  )
+```
+
+From this, we can see that there are three paired RNA+ATAC datasets: two CRISPR knockouts and one control. Each pair corresponds to a specific sample ID:
+- B4: CRISPR KO with a 29 and 41 bp deletion in GLI3
+- D3: CRISPR KO with a 4 and 8 bp insertion in GLI3
+- A4: Control (WT)
+
+**PS**: [GLI3](https://en.wikipedia.org/wiki/GLI3) is zinc finger protein which is involved in Sonic hedgehog (Shh) signaling.

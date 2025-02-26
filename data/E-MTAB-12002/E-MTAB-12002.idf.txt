@@ -1,0 +1,71 @@
+MAGE-TAB Version	1.1
+Investigation Title	Multiome experiment from GLI3 KO brain organoids
+
+Experimental Design	genetic modification design
+Experimental Design Term Source REF	EFO
+Experimental Design Term Accession Number	EFO:0001758
+
+Experimental Factor Name	library construction	genetic modification
+Experimental Factor Type	library construction	genetic modification
+Experimental Factor Term Source REF		EFO
+Experimental Factor Term Accession Number		EFO_0000510
+
+Person Last Name	Jansen	Fleck
+Person First Name	Sophie	Jonas Simon
+Person Mid Initials	MJ
+Person Email	sophie.jansen@bsse.ethz.ch	jonas.fleck@bsse.ethz.ch
+Person Phone
+Person Fax
+Person Affiliation	ETH Zürich, DBSSE	ETH Zürich, DBSSE
+Person Address	Mattenstrasse 26, 4058 Basel	Mattenstrasse 26, 4058 Basel
+Person Roles	submitter	submitter
+Person Roles Term Source REF
+Person Roles Term Accession Number
+
+Quality Control Type
+Quality Control Term Source REF
+Quality Control Term Accession Number
+
+Replicate Type
+Replicate Term Source REF
+Replicate Term Accession Number
+
+Normalization Type
+Normalization Term Source REF
+Normalization Term Accession Number
+
+Date of Experiment	2020-11-24
+Public Release Date	2022-08-25
+
+PubMed ID	
+Publication DOI	10.1101/2021.08.24.457460
+Publication Author List	Jonas S. Fleck, Sophie M.J. Jansen, Damian Wollny, Makiko Seimiya, Fides Zenk, Malgorzata Santel, Zhisong He, J. Gray Camp, Barbara Treutlein
+Publication Title	Inferring and perturbing cell fate regulomes in human cerebral organoids
+Publication Status	preprint
+Publication Status Term Source REF
+Publication Status Term Accession Number
+
+Experiment Description	To study the effect of GLI3 knockout on early brain organoid development, we collected single-cell multiome data from 18 day old brain organoids
+
+Protocol Name	P-MTAB-124502	P-MTAB-124503	P-MTAB-124504	P-MTAB-124506	P-MTAB-124505	P-MTAB-124507
+Protocol Type	growth protocol	treatment protocol	sample collection protocol	nucleic acid library construction protocol	nucleic acid extraction protocol	nucleic acid sequencing protocol
+Protocol Term Source REF	EFO	EFO	EFO	EFO	EFO	EFO
+Protocol Term Accession Number	EFO_0003789	EFO_0003969	EFO_0005518	EFO_0004184	EFO_0002944	EFO_0004170
+Protocol Description	10.1101/2021.08.24.457460
+Protocol Parameters
+Protocol Hardware						Illumina NovaSeq 6000
+Protocol Software
+Protocol Contact
+
+Term Source Name	EFO	ArrayExpress
+Term Source File	http://www.ebi.ac.uk/efo/	http://www.ebi.ac.uk/arrayexpress/
+Term Source Version	http://www.ebi.ac.uk/efo/
+
+SDRF File	E-MTAB-12002.sdrf.txt
+Comment [Submitted Name]	Multiome experiment from GLI3 KO brain organoids
+Comment [TemplateType]	Cell line - Single-cell sequencing
+Comment [SecondaryAccession]	ERP140137
+Comment [SequenceDataURI]	http://www.ebi.ac.uk/ena/data/view/ERR10036853-ERR10036864
+Comment [AEExperimentType]	RNA-seq of coding RNA from single cells
+Comment [AEExperimentType]	scATAC-seq
+Comment[ArrayExpressAccession]	E-MTAB-12002
