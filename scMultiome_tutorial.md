@@ -226,21 +226,13 @@ data, we can use the output folder
 Since this dataset includes two modalities (RNA & ATAC), the output will
 contain two matrices. We can check their dimensions as follows:
 
-    print(paste("Number of cells in RNA-seq data:",ncol(count_aggr$`Gene Expression`)))
+    dim(count_aggr$`Gene Expression`)
 
-    ## [1] "Number of cells in RNA-seq data: 25327"
+    ## [1] 36601 25327
 
-    print(paste("Number of features in RNA-seq data:",nrow(count_aggr$`Gene Expression`)))
+    dim(count_aggr$Peaks)
 
-    ## [1] "Number of features in RNA-seq data: 36601"
-
-    print(paste("Number of cells in ATAC-seq data:",ncol(count_aggr$Peaks)))
-
-    ## [1] "Number of cells in ATAC-seq data: 25327"
-
-    print(paste("Number of features in ATAC-seq data:",nrow(count_aggr$Peaks)))
-
-    ## [1] "Number of features in ATAC-seq data: 301573"
+    ## [1] 301573  25327
 
 Before proceeding, we confirm whether the barcodes (cell identities) in
 both matrices match:
@@ -303,8 +295,8 @@ some filtering first:
 To better interpret the peaks, we can annotate them with the **nearest**
 genes. Many genomic databases and tools provide R interfaces, making R a
 powerful environment for genomic data analysis. Here we follow the
-\[`Seurat` WNN tutorial\]
-(<https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis#wnn-analysis-of-10x-multiome-rna-atac>):
+[`Seurat` WNN
+tutorial](https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis#wnn-analysis-of-10x-multiome-rna-atac):
 
     annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
     seqlevelsStyle(annotations) <- 'UCSC'
@@ -340,6 +332,9 @@ powerful environment for genomic data analysis. Here we follow the
     # we'll only use peaks in standard chromosomes
     grange.use <- seqnames(grange.counts) %in% standardChromosomes(grange.counts)
     filtered_peaks <- filtered_peaks[as.vector(grange.use), ]
+
+We can check the filtered matrix dimension:
+
     dim(filtered_peaks)
 
     ## [1] 55548 25327
@@ -364,6 +359,8 @@ capacities.
 
     ## Computing hash
 
+Now we have the seurat object with both RNA and ATAC assays:
+
     seurat
 
     ## An object of class Seurat 
@@ -371,6 +368,8 @@ capacities.
     ## Active assay: RNA (36601 features, 0 variable features)
     ##  1 layer present: counts
     ##  1 other assay present: ATAC
+
+**Optional**: Save the object.
 
     saveRDS(
       object = seurat,

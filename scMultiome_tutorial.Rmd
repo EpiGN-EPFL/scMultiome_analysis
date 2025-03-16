@@ -109,10 +109,8 @@ count_aggr <- Read10X("data/filtered_feature_bc_matrix/")
 Since this dataset includes two modalities (RNA & ATAC), the output will contain two matrices. We can check their dimensions as follows:
 
 ```{r}
-print(paste("Number of cells in RNA-seq data:",ncol(count_aggr$`Gene Expression`)))
-print(paste("Number of features in RNA-seq data:",nrow(count_aggr$`Gene Expression`)))
-print(paste("Number of cells in ATAC-seq data:",ncol(count_aggr$Peaks)))
-print(paste("Number of features in ATAC-seq data:",nrow(count_aggr$Peaks)))
+dim(count_aggr$`Gene Expression`)
+dim(count_aggr$Peaks)
 ```
 
 Before proceeding, we confirm whether the barcodes (cell identities) in both matrices match:
@@ -161,7 +159,7 @@ filtered_peaks <- filtered_peaks[rowSums(filtered_peaks) >= min_reads, ]
 dim(filtered_peaks)  # Check new dimensions
 ```
 
-To better interpret the peaks, we can annotate them with the **nearest** genes. Many genomic databases and tools provide R interfaces, making R a powerful environment for genomic data analysis. Here we follow the [`Seurat` WNN tutorial] (https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis#wnn-analysis-of-10x-multiome-rna-atac):
+To better interpret the peaks, we can annotate them with the **nearest** genes. Many genomic databases and tools provide R interfaces, making R a powerful environment for genomic data analysis. Here we follow the [`Seurat` WNN tutorial](https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis#wnn-analysis-of-10x-multiome-rna-atac):
 
 ```{r, warning=FALSE}
 annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
@@ -202,6 +200,11 @@ grange.counts <- GRanges(seqnames = chr, ranges = IRanges(start = start, end = e
 # we'll only use peaks in standard chromosomes
 grange.use <- seqnames(grange.counts) %in% standardChromosomes(grange.counts)
 filtered_peaks <- filtered_peaks[as.vector(grange.use), ]
+```
+
+We can check the filtered matrix dimension:
+
+```{r}
 dim(filtered_peaks)
 ```
 
@@ -217,9 +220,15 @@ seurat[['ATAC']] <-  CreateChromatinAssay(
    fragments = frag.file,
    annotation = annotations
  )
+```
+Now we have the seurat object with both RNA and ATAC assays:
 
+```{r}
 seurat
 ```
+
+**Optional**: Save the object.
+
 ```{r, eval=FALSE}
 saveRDS(
   object = seurat,
