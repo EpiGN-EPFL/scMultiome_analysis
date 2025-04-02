@@ -2,8 +2,12 @@
 title: "Single cell RNA+ATAC tutorial"
 author: "Hanrong Hu"
 date: "2025-02-25"
-output: md_document
+output: html_notebook
 ---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE, results = "hide") 
+```
 
 # Introduction 
 
@@ -12,6 +16,7 @@ With the advancement of single-cell technologies, we can now profile multiple mo
 * [Multiplexed spatial mapping of chromatin features, transcriptome and proteins in tissues](https://www.nature.com/articles/s41592-024-02576-0)
 * [Single-cell multiplex chromatin and RNA interactions in ageing human brain](https://www.nature.com/articles/s41586-024-07239-w)
 * [Linking genome structures to functions by simultaneous single-cell Hi-C and RNA-seq](https://www.science.org/doi/10.1126/science.adg3797)
+* [Multimodal charting of molecular and functional cell states via in situ electro-sequencing](https://www.sciencedirect.com/science/article/pii/S0092867423002866?via%3Dihub)
 * ...
 
 One of the most popular methods is the [Epi Multiome ATAC + Gene Expression](https://www.10xgenomics.com/products/epi-multiome) from 10x Genomics. You can find the workflow [here](https://www.10xgenomics.com/support/epi-multiome).
@@ -35,12 +40,21 @@ library(Signac)
 library(Matrix)
 library(dplyr)
 library(tidyr)
-library(knitr) # This is to make rendered Markdown files look pretty
+library(ggplot2)
+library(presto)
+library(pheatmap)
+library(yaml)
+library(tibble)
+library(clustree)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ggrepel)
+library(DESeq2)
 ```
 
 **Note**: Both `Seurat` and `Signac` are under active development. To ensure compatibility, verify your package versions:
 
-```{r}
+```{r, results="markup"}
 packageVersion("Seurat")
 ```
 
@@ -50,10 +64,6 @@ Before we dive into the actual analysis, it is always good to examine the datase
 
 ```{r}
 sample_info <- read.csv("data/E-MTAB-12002/E-MTAB-12002.sdrf.txt", sep = '\t')
-```
-
-To summarize the sample modalities and genetic modifications:
-```{r}
 # Summarize sample information by genetic modification and modality
 sample_info %>%
   mutate(
@@ -67,8 +77,7 @@ sample_info %>%
   summarize(
     ATAC_samples = paste(unique(Assay.Name[Modality == "ATAC"]), collapse = ", "),
     RNA_samples = paste(unique(Assay.Name[Modality == "RNA"]), collapse = ", ")
-  ) %>%
-  kable()
+  ) 
 ```
 
 In this dataset, `S1` and `S2` denote the same biological sample sequenced across two different lanes. There are three paired RNA+ATAC datasets: two CRISPR knockouts and one control. Each pair corresponds to a specific sample ID:
@@ -79,14 +88,13 @@ In this dataset, `S1` and `S2` denote the same biological sample sequenced acros
 
 **PS**: [GLI3](https://en.wikipedia.org/wiki/GLI3) is zinc finger protein which is involved in Sonic hedgehog (Shh) signaling.
 
-## Step 2 - Understand the output 
+## Step 2 - Understand the Output 
 
 To streamline the analysis, multiple runs (i.e., results from `cellranger-arc count`) were aggregated using [`cellranger-arc aggr`](https://www.10xgenomics.com/support/software/cell-ranger-arc/latest/analysis/running-pipelines/aggregating-multiple-gem-wells-aggr). The aggregation was guided by a `libraries_aggr.csv` file:
 
 ```{r}
 libraries <- read.csv('data/libraries_aggr.csv')
-libraries %>%
-  kable()
+libraries 
 ```
 
 **Key points**:
@@ -108,50 +116,44 @@ count_aggr <- Read10X("data/filtered_feature_bc_matrix/")
 
 Since this dataset includes two modalities (RNA & ATAC), the output will contain two matrices. We can check their dimensions as follows:
 
-```{r}
+```{r, results="markup"}
 dim(count_aggr$`Gene Expression`)
 dim(count_aggr$Peaks)
 ```
 
 Before proceeding, we confirm whether the barcodes (cell identities) in both matrices match:
 
-```{r}
+```{r, results="markup"}
 all(colnames(count_aggr$`Gene Expression`) == colnames(count_aggr$Peaks))
 ```
 
 If TRUE, the barcodes are perfectly aligned across both modalities. If FALSE, further investigation is needed to identify discrepancies.
 
-### Exploring the RNA Assay
+## Step 2 - Exploring the RNA Assay
 
 The RNA assay generates a **GENE × CELL** matrix, which already provides useful information:
 
-```{r}
+```{r, results="markup"}
 rownames(count_aggr$`Gene Expression`) %>% head()
 ```
 
-```{r}
+```{r, results="markup"}
 seurat <- CreateSeuratObject(counts = count_aggr$`Gene Expression`,
                                  assay = "RNA")
 seurat
 ```
 
-### Exploring the ATAC Assay
+## Step 3 - Exploring the ATAC Assay
 
 Unlike RNA data, chromatin accessibility data is stored as a **PEAK × CELL** matrix:
 
-```{r}
+```{r, results="markup"}
 rownames(count_aggr$Peaks) %>% head()
 ```
 
-Each feature (row) represents a genomic region (peak) in the format: `chromosome:start-end`. And we will notice that the matrix is still very big:
+Each feature (row) represents a genomic region (peak) in the format: `chromosome:start-end`. And we will notice that the matrix is still very big. To **not kill this R session because of memory requirements**, we can do some filtering first:
 
-```{r}
-dim(count_aggr$Peaks)
-```
-
-To **not kill this R session because of memory requirements**, we can do some filtering first:
-
-```{r}
+```{r, results="markup"}
 min_cells <- round(0.05 * ncol(count_aggr$Peaks))  # Keep peaks present in at least X% of cells
 filtered_peaks <- count_aggr$Peaks[rowSums(count_aggr$Peaks > 0) >= min_cells, ]
 min_reads <- 100  # Keep peaks with at least Y reads
@@ -170,7 +172,7 @@ genome(annotations) <- "hg38"
 ```{r}
 ################ NOTE #################
 ## StringToGRanges keep crushing (?) ###
-## So we do it mannually ##
+## So we do it manually ##
 ########################################
 
 # grange.counts <- StringToGRanges(rownames(filtered_peaks), sep = c(":", "-"))
@@ -194,17 +196,15 @@ end <- as.integer(sapply(ranges_split, `[`, 2))
 
 # Create GRanges object
 grange.counts <- GRanges(seqnames = chr, ranges = IRanges(start = start, end = end))
-```
 
-```{r}
-# we'll only use peaks in standard chromosomes
+# We'll only use peaks in standard chromosomes
 grange.use <- seqnames(grange.counts) %in% standardChromosomes(grange.counts)
 filtered_peaks <- filtered_peaks[as.vector(grange.use), ]
 ```
 
 We can check the filtered matrix dimension:
 
-```{r}
+```{r, results="markup"}
 dim(filtered_peaks)
 ```
 
@@ -223,7 +223,7 @@ seurat[['ATAC']] <-  CreateChromatinAssay(
 ```
 Now we have the seurat object with both RNA and ATAC assays:
 
-```{r}
+```{r, results="markup"}
 seurat
 ```
 
@@ -235,4 +235,706 @@ saveRDS(
   file = "out/raw_seurat.Rds"
 )
 ```
+
+# Part 3 - Monomodal Data Analysis 
+
+## Step 1 - Quality Control
+
+This section is largely inspired from [this tutorial](https://github.com/quadbio/scMultiome_analysis_vignette/blob/main/Tutorial.md#step-2-quality-control).
+
+```{r, eval=FALSE}
+# if you start from the prepared seurat object 
+seurat <- readRDS('out/raw_seurat.Rds')
+```
+
+For the RNA assay, what we would check is the same as the typical scRNA-seq (i.e., filter out cells with too few or too many detected genes or transcripts (UMIs)).
+
+```{r}
+seurat <- PercentageFeatureSet(seurat, pattern = "^MT-", col.name = "percent.mt", assay = "RNA")
+```
+
+For the ATAC assay, we would also look at the number of detected peaks or detected fragments, similar to the RNA assay. On top of that, we would also exclude cells with too weak fragment enrichment around the transcriptional start sites (TSS). We can also quantify the approximate ratio of ATAC fragments with a strong nucleosome banding pattern (those with fragment lengths around a single nucleosome) that unlikely represent real accessible genomic regions, in relative to the nucleosome-free fragments, and then discard cells with too high of such ratio.
+
+```{r}
+seurat <- NucleosomeSignal(seurat, assay = "ATAC")
+```
+
+For TSS enrichment, we do some tricks here to reduce the computing time: 
+
+```{r}
+# Extract TSS annotation
+tss <- GetTSSPositions(Annotation(seurat@assays$ATAC))
+seurat <- TSSEnrichment(seurat,tss.positions=sample(tss,1000),assay = "ATAC")
+```
+
+After aggregation, barcodes are typically appended with a suffix indicating their origin (e.g., -1, -2, -3). You can use these suffixes to assign sample identities:
+
+```{r}
+# Extract sample identifiers from cell barcodes
+seurat$sample <- sapply(strsplit(colnames(seurat), "-"), `[`, 2)
+seurat$sample <- plyr::mapvalues(
+  seurat$sample,
+  from = c("1", "2", "3"),
+  to = c("WT", "KO1", "KO2")
+)
+```
+
+We can have a look at the QC results for each sample here: 
+
+```{r}
+VlnPlot(seurat,
+        features = c("nFeature_RNA",
+                     "percent.mt",
+                     "nFeature_ATAC",
+                     "TSS.enrichment",
+                     "nucleosome_signal"),
+        ncol = 3, group.by='sample',
+        pt.size = 0)
+```
+
+Based on the distributions, we can set the filtering criteria as:
+
+```{r}
+seurat <- subset(seurat,
+  subset = nFeature_RNA > 1000 &
+    nFeature_RNA < 7500 &
+    percent.mt < 40 &
+    nFeature_ATAC > 1000 &
+    nFeature_ATAC < 25000 &
+    TSS.enrichment > 1 &
+    nucleosome_signal < 1
+)
+```
+
+## Step 2 - RNA Assay 
+
+The analysis for the scRNA assay is rather standard, including data normalization, highly variable genes identification, data scaling, principal component analysis (PCA), and then the UMAP embedding. Additionally, we use the CCA integration from `seurat` following this [tutorial](https://satijalab.org/seurat/articles/integration_introduction.html#perform-integration):
+
+```{r}
+DefaultAssay(seurat) <- "RNA"
+# to make it work with seurat v5
+seurat[['RNA']] <- split(seurat[["RNA"]], f = seurat$sample)
+seurat <- NormalizeData(seurat) %>%
+  FindVariableFeatures(nfeatures = 3000) %>%
+  ScaleData() %>%
+  RunPCA(npcs = 50) 
+
+seurat <- IntegrateLayers(object = seurat, method = CCAIntegration,
+                  orig.reduction = "pca", new.reduction = "integrated.cca",
+                  verbose = FALSE)
+
+seurat[['RNA']] <- JoinLayers(seurat[['RNA']])
+seurat <- RunUMAP(seurat, dims = 1:30, reduction = "integrated.cca",
+                reduction.name = "umap_rna", reduction.key = "UMAPINTEGRATEDCCARNA_")
+```
+
+For visualization, we use the marker genes mentioned in this [tutorial](https://github.com/quadbio/scRNAseq_analysis_vignette/blob/master/Tutorial.md#step-9-annotate-cell-clusters).  
+
+```{r}
+# Visualization
+marker_genes <- c("MKI67","NES","DCX","FOXG1","DLX2","EMX1","OTX2","LHX9","TFAP2A")
+
+p1 <- DimPlot(seurat, group.by = "sample", reduction = "umap_rna") & NoAxes()
+p2 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "umap_rna") & NoAxes() & NoLegend()
+p1 | p2
+```
+
+We can already see that the 2 KOs and WT are nicely integrated. From maker genes we can also see the separation of progenitors (e.g. NES) and neurons (e.g. DCX), as well as brain regional identities (e.g. FOXG1). We can also do clustering analysis based on RNAseq data alone:
+
+```{r}
+seurat <- FindNeighbors(seurat, reduction = "integrated.cca", dims = 1:30)
+# Find the optimum cluster resolution
+seurat <- FindClusters(seurat, resolution = seq(0.1,1,by=0.1), verbose = F, graph.name = 'RNA_snn')
+```
+
+We can use `clustree` to build a clustering tree, which is useful to visualize the relationships between clustering resolutions. 
+
+```{r,fig.width=10,fig.height=6}
+# Make Plot
+clustree(seurat, layout="sugiyama", prefix = "RNA_snn_res.")
+```
+
+**NOTE**: There are indeed many other criteria and algorithms to evalute the number of clusters. Here to make things simple, we just choose one resolution where the clusters are relatively stable.
+
+```{r}
+p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.7", 
+              reduction = "umap_rna", label = T) & NoAxes() & NoLegend()
+p1 | p2
+```
+
+
+## Step 3 - ATAC Assay
+
+ATAC-seq data analysis follows a similar workflow to scRNA-seq, including normalization, feature selection, linear and non-linear dimensional reduction, and data integration. However, due to differences in data properties, the specific algorithms used in each step vary.
+
+This section primarily follows the [official tutorial from `Signac`](https://stuartlab.org/signac/articles/pbmc_vignette.html#normalization-and-linear-dimensional-reduction) together with this [multiome analysis tutorial](https://github.com/quadbio/scMultiome_analysis_vignette/blob/main/Tutorial.md#step-4-analysis-on-the-atac-assay).
+
+### Step 3.1 - Normalization and Linear Dimensional Reduction
+
+**Feature selection**:The low dynamic range of scATAC-seq data makes it challenging to perform feature selection based on variablity as in scRNA-seq. Instead, we can choose to use only the top n% of features (peaks) for dimensional reduction, or remove features present in less than n cells (similar to what we did when creating this seurat object).
+
+```{r}
+DefaultAssay(seurat) <- "ATAC"
+# select the top 25% most common features for faster runtime
+seurat <- FindTopFeatures(seurat, min.cutoff = 'q75') 
+```
+
+**Normalization**: Signac performs Term Frequency-Inverse Document Frequency ([TF-IDF](https://en.wikipedia.org/wiki/Tf–idf)) normalization. This is a two-step normalization procedure:
+
+* Term frequency (TF) normalizes for sequencing depth by scaling peak accessibility counts within each cell
+* Inverse Document Frequency (IDF) down-weights these frequently accessible regions (i.e, peaks that are open across many cells but might not be biologically informative), ensuring that rare but cell-type-specific peaks get more importance.
+
+```{r}
+seurat <- RunTFIDF(seurat)
+```
+
+**Linear dimension reduction**: We next run Singular Value Decomposition (SVD) to the TD-IDF matrix, which gives Latent Semantic Indexing (LSI) components. This is very similar to PCA, but it can better handle the sparsity (as we can see ATAC matrix is much bigger than the RNA one). The first singular vector often captures sequencing depth (technical variation) rather than biological variation. 
+
+```{r}
+seurat <- RunSVD(seurat, n = 50)
+# check what the LSI dimensions explain
+p1 <- ElbowPlot(seurat, ndims = 30, reduction="lsi")
+p2 <- DepthCor(seurat, n = 30) # correlation to sequencing depth 
+p1 | p2
+```
+
+**Non-linear dimension reduction**: Similar to scRNA-seq data, we can visualize the data using UMAP:
+
+```{r}
+seurat <- RunUMAP(seurat,
+                  reduction = "lsi",
+                  dims = 2:30,
+                  reduction.name = "umap_atac",
+                  reduction.key = "UMAPATAC_")
+p1 <- DimPlot(seurat,
+              group.by = "sample",
+              reduction = "umap_atac") & NoAxes()
+p2 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "umap_atac") & NoAxes() & NoLegend()
+p1 | p2
+```
+
+Here, both panels are shown in the UMAP space derived from ATAC data. On the left, we observe a relatively uniform “blob-like” structure comparing to the UMAP space from RNA assay. However, when RNA expression from the multiome is overlaid on the same ATAC UMAP (right), we can still see a  separation between progenitors and neurons (e.g., MKI67, NES, DCX), as well as evidence of brain regionalization (e.g., FOXG1, DLX2, EMX1, OTX2, LHX2, TFAP2A), indicating that RNA remains the dominant source of information for cell identity and state. 
+
+### (Optional) Step 3.2 Create a gene activity matrix
+
+To estimate gene activity, we assess chromatin accessibility associated with each gene and generate an inferred RNA assay from the scATAC-seq data. This can be done using a wrapper function `GeneActivity()`:
+
+```{r}
+gene.activities <- GeneActivity(seurat)
+seurat[['RNA_inferred']] <- CreateAssayObject(gene.activities) %>% NormalizeData()
+
+DefaultAssay(seurat) <- "RNA_inferred"
+p3 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "umap_atac") & NoAxes() & NoLegend()
+p1 | p3
+```
+Here, we show gene activity scores inferred from ATAC profiles. While the activity patterns for some genes, such as FOXG1, partially recapitulate the expression patterns observed in the RNA assay (previous figure), the overall separation between cell types is less distinct. This highlights that while gene activity from ATAC can provide useful proxies for transcriptional programs, it lacks the resolution and specificity of direct RNA measurements.
+
+### Step 3.3 Data integration 
+
+Integration of ATAC dataset is very similar to RNA, but we will use the LSI components. However, currently `Seurat v5` is not compatible with `ChromatinAssay`, so we will use the old(er) approach. This section largely follows the [scATAC-seq data integration tutorial](https://stuartlab.org/signac/articles/integrate_atac#integration).
+
+```{r}
+DefaultAssay(seurat) <- 'ATAC'
+
+integration.anchors <- FindIntegrationAnchors(
+  object.list = SplitObject(seurat, "sample"),
+  reduction = "rlsi", # we use Reciprocal LSI
+  dims = 2:30 # ignore the first LSI components
+)
+
+# Integrate LSI embeddings 
+integrated <- IntegrateEmbeddings(
+  anchorset = integration.anchors,
+  reductions = seurat[["lsi"]],
+  new.reduction.name = "integrated.lsi",
+  dims.to.integrate = 1:30
+) 
+
+# Add the dimension reduction to the original seurat
+seurat[['integrated.lsi.atac']] <- CreateDimReducObject(
+  Embeddings(integrated, "integrated.lsi")[colnames(seurat),], 
+  key="INTEGRATEDLSIATAC_", assay="ATAC"
+)
+
+seurat <- RunUMAP(seurat,
+                  reduction = "integrated.lsi.atac",
+                  dims = 2:30,
+                  reduction.name = "umap_atac",
+                  reduction.key = "UMAPINTEGRATEDLSIATAC_")
+```
+
+Finally, we can visualize our cells in the integrated ATAC space: 
+
+```{r}
+DefaultAssay(seurat) <- 'RNA'
+p1 <- DimPlot(seurat,
+              group.by = "sample",
+              reduction = "umap_atac") & NoAxes()
+p2 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "umap_atac") & NoAxes() & NoLegend()
+p1 | p2
+```
+
+**Optional**: Save the object.
+
+```{r, eval=FALSE}
+saveRDS(seurat, 'out/unimodal_seurat.Rds')
+```
+
+# Part 4 - Multimodal data integration
+
+## Step 1: Visualization in Unimodal Embeddings
+
+```{r, eval=FALSE}
+# if you start from separately integrated data
+seurat <- readRDS('out/unimodal_seurat.Rds')
+```
+
+RNA and ATAC assays capture different aspects of cell identity and regulation. As discussed earlier, RNA typically remains the dominant source of information for defining cell identity and state. We can visualize this by comparing the RNA and ATAC embeddings side by side.
+
+```{r}
+DefaultAssay(seurat) <- "RNA"
+Reduce("|", lapply(c("umap_rna",
+                     "umap_atac"), function(dr){
+  p1 <- DimPlot(seurat,
+                group.by = "RNA_snn_res.0.7",
+                reduction = dr) & NoLegend()
+  p2 <- FeaturePlot(seurat,
+                    marker_genes,
+                    reduction = dr) & NoAxes() & NoLegend()
+  p1 / p2
+}))
+```
+
+This side-by-side visualization helps illustrate how each modality captures structure in the data. The RNA-based embedding often shows clearer separation of cell types, while the ATAC embedding may capture regulatory variation not visible in RNA alone.
+
+
+## Step 2 - Weighted Nearest Neighbor Analysis
+
+So far, we have treated the two modalities separately, given their distinct data characteristics.  A common strategy for integrating ATAC-seq with RNA-seq data is to infer gene activity scores (e.g., Gene.Activity) from chromatin accessibility profiles.
+
+However, since we are working with multiome data—where both ATAC and RNA are measured from the same cell—we can go a step further. Weighted Nearest Neighbor (WNN) analysis provides an unsupervised framework that learns the relative contribution of each modality per cell. This allows us to perform a more integrated analysis that balances both transcriptomic and chromatin information.
+
+This part mainly follows the [Weighted Nearest Neighbor Analysis](https://satijalab.org/seurat/articles/weighted_nearest_neighbor_analysis#wnn-analysis-of-10x-multiome-rna-atac) tutorial from `Seurat`.
+
+```{r}
+DefaultAssay(seurat) <- 'RNA'
+seurat <- FindMultiModalNeighbors(seurat, 
+                                  reduction.list = list("integrated.cca", "integrated.lsi.atac"), 
+                                  dims.list = list(1:50, 2:30))
+seurat <- RunUMAP(seurat, nn.name = "weighted.nn", 
+                  reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+
+# Here we just choose one resolution, but feel free to change this parameter
+seurat <- FindClusters(seurat, graph.name = "wsnn", resolution = 0.7, verbose = FALSE)
+```
+
+```{r}
+p1 <- DimPlot(seurat,group.by = "sample",reduction = "wnn.umap") 
+p2 <- DimPlot(seurat,group.by = "wsnn_res.0.7",label=T, reduction = "wnn.umap") & NoLegend()
+p3 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "wnn.umap") & NoAxes() & NoLegend()
+p1 / p2 | p3
+```
+
+This visualization highlights how the WNN approach brings together complementary signals from RNA and ATAC to refine cell clustering and interpretation.
+
+## Step 3 - Did using both RNA and ATAC improve my clustering compared to using just RNA?
+
+This part we try to answer this philosophical question: Why do we use multiome? Is it just because we can (afford to) do it?
+
+To begin answering this, let’s compare clustering results:
+
+```{r}
+# RNA-only clustering 
+p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.7", reduction = "umap_rna", label = T) + 
+  ggtitle("RNA-only Clustering")
+
+# WNN clustering 
+p2 <- DimPlot(seurat, group.by = "wsnn_res.0.7", reduction = "wnn.umap", label = T) + 
+  ggtitle("WNN Clustering")
+
+p1 & NoLegend()| p2 & NoLegend() # Combine with patchwork
+```
+
+At first glance, the two clustering results look quite similar. That’s not surprising—RNA often carries the strongest signal for cell identity, especially for broad cell types.
+
+However, when using the same clustering resolution, adding the ATAC modality via WNN can refine local structures and help separate subpopulations that RNA alone might miss.
+
+Let’s quantify the similarity between RNA-only and WNN clusters using a contingency table:
+
+```{r}
+table(RNA=seurat$RNA_snn_res.0.7, WNN=seurat$wsnn_res.0.7)  %>%
+  heatmap(xlab='WNN clustering', ylab='RNA-only Clustering', Rowv = NA, Colv = NA)
+```
+
+In some cases, WNN might uncover subtle transitions or regulatory shifts that are invisible in transcriptomic space alone.
+
+## Step 4 - Cell Type Annotation
+
+In this step, we use the WNN clustering results to annotate cell types based on marker gene expression.
+
+```{r}
+DefaultAssay(seurat) <- "RNA"
+DE_wnn <- wilcoxauc(seurat, "wsnn_res.0.7", seurat_assay = "RNA")
+top_markers_wnn <- DE_wnn %>%
+  filter(abs(logFC) > log(1.2) &
+         padj < 0.01 &
+         auc > 0.65 &
+         pct_in - pct_out > 30 &
+         pct_out < 20) %>%
+  group_by(group) %>%
+  top_n(10, wt = auc)
+top_markers_wnn
+```
+
+From here we can already identify some markers of very early development stages (i.e POU5F1,POU3F1 and RFX4).
+
+**Reference Markers from Brain Organoid Data**
+
+We provide a curated YAML file from [a published brain organoid study](https://www.nature.com/articles/s41586-024-08172-8), which includes useful marker genes for annotation:
+
+```{r}
+yaml_data <- read_yaml('data/marker_genes.yaml')
+df <- as.data.frame(do.call(rbind, lapply(yaml_data, as.list)))
+DotPlot(seurat, df$marker_genes, group.by = 'wsnn_res.0.7') + RotatedAxis()
+```
+
+To explore more specific subtypes (e.g., neural progenitor cell (NPC) subtypes):
+
+```{r}
+npc_list <- as.data.frame(do.call(rbind, 
+                                  lapply(yaml_data$neural_progenitor_cell$subtypes, as.list)))
+all_genes <- unlist(npc_list$marker_genes)
+dups <- unique(all_genes[duplicated(all_genes)])
+npc_markers <- lapply(npc_list$marker_genes, function(genes) {
+  setdiff(genes, dups)
+})
+DotPlot(seurat, npc_markers, group.by = 'wsnn_res.0.7') + RotatedAxis()
+```
+
+**Alternative: Use Average Cluster Expression**
+
+In case you think `DotPlot` is very fabricated, you can compute average expression across clusters and visualize known markers in a heatmap:
+
+```{r, fig.height=10, fig.width=8}
+avg <- AggregateExpression(seurat, assays = 'RNA', group.by='wsnn_res.0.7',
+                           return.seurat=TRUE) 
+avg <- NormalizeData(avg)
+avg <- GetAssayData(object = avg, assay = "RNA") 
+
+marker_df <- read.table('data/markers.txt', sep='\t')
+
+pheatmap(avg[unique(rownames(marker_df)), ], 
+         color = colorRampPalette(c("navy","white", "red"))(20),
+         breaks = seq(0,2,0.1),
+         scale = "column", # scaling can change the visual effects 
+         cluster_cols = FALSE, cluster_rows = FALSE,
+         annotation_row = marker_df %>% select(level1, level2, level3))
+```
+
+**Assigning Cell Type Annotations**
+
+Using a combination of known markers and clustering structure, we can now assign broad annotations to WNN clusters:
+
+```{r}
+meta <- seurat@meta.data %>%
+  mutate(stage=case_when(
+    wsnn_res.0.7 %in% c(0, 14, 3, 9) ~ 'telencephalon',
+    wsnn_res.0.7 %in% c(1, 2, 5, 6, 8, 13) ~ 'early',
+    wsnn_res.0.7 %in% c(4, 7, 11, 15, 19) ~ 'nontelencephalon',
+    wsnn_res.0.7 %in% c(10, 12, 17, 18) ~ 'other',
+    wsnn_res.0.7 %in% c(16) ~ 'neuron'
+  )) %>%
+  mutate(celltype=interaction(stage, wsnn_res.0.7, drop = TRUE))
+
+seurat <- AddMetaData(seurat, meta)
+p1 <- DimPlot(seurat,
+              group.by = "stage",
+              reduction = "wnn.umap", label = T) & NoAxes() & NoLegend()
+p2 <- FeaturePlot(seurat,
+                  marker_genes,
+                  reduction = "wnn.umap") & NoAxes() & NoLegend()
+p1 | p2
+```
+
+We can see that some cells appear ambiguous and are blended into the early developmental stage. If needed, we could further refine this annotation by running `FindSubCluster()` to split specific clusters. But for now, we’ll keep it simple and proceed with this level of resolution.
+
+**Optional**: Save the object:
+
+```{r, eval=FALSE}
+saveRDS(seurat, 'out/bimodal_seurat.Rds')
+```
+
+# Part 5 - Downstream Analysis 
+
+## Step 1 - Differentially Expressed Genes
+
+```{r, eval=FALSE}
+# If you start from part 5 directly 
+seurat <- readRDS('out/bimodal_seurat.Rds')
+```
+
+In the context of a CRISPR knockout (KO) experiment, our main goal is to understand how gene expression changes in KO versus control (WT) cells. For simplicity, we’ll focus on telencephalon progenitors.
+
+Start by checking how the samples are distributed across cell stages:
+
+```{r}
+# Have a look
+table(seurat$sample, seurat$stage)
+```
+
+We’ll subset only the telencephalon cells:
+
+```{r}
+seurat_sub <- subset(seurat, stage == 'telencephalon')
+```
+
+To keep things simple, we combine KO1 and KO2 into a single group and compare them against WT:
+
+```{r}
+seurat_sub$group <- ifelse(seurat_sub$sample %in% c("KO1", "KO2"), "KO", "WT")
+res_ko_vs_wt <- wilcoxauc(seurat_sub, 'group', seurat_assay = 'RNA')
+res_ko_vs_wt_only <- res_ko_vs_wt[res_ko_vs_wt$group == "KO", ]
+res_ko_vs_wt_only %>%
+  filter(abs(logFC) > log(1.2) &
+         padj < 0.05) %>%
+  group_by(group) %>%
+  top_n(10, wt = auc)
+```
+
+**NOTE**: If you want to compare KO1 vs WT and KO2 vs WT individually, subset the data before running `wilcoxauc()` since it compares each group to all others. Alternatively, you can use `FindMarkers()` with `ident.1` and `ident.2`.
+
+**Pseudo-bulk DE Analysis with DESeq2**
+
+The best practices for DEG testing in single-cell data are still evolving. One strategy to reduce false positives is to perform pseudo-bulk DE by aggregating counts at the sample level.
+
+```{r}
+pseudo_bulk <- AggregateExpression(seurat_sub, assays = 'RNA', group.by='sample')$RNA
+samples <- colnames(pseudo_bulk)
+condition <- ifelse(samples %in% c("KO1", "KO2"), "KO", "WT")
+
+sample_info <- data.frame(
+  sample = samples,
+  condition = condition
+)
+
+dds <- DESeqDataSetFromMatrix(countData = pseudo_bulk,
+                              colData = sample_info,
+                              design = ~ condition)
+
+dds <- DESeq(dds)
+
+# extract the results of KOs vs WT
+res <- results(dds, contrast = c("condition", "KO", "WT"))
+res_df <- as.data.frame(res)
+res_df <- res_df[order(res_df$padj), ]
+head(res_df, n=10)
+```
+
+**Volcano Plots: Single-cell vs Pseudo-bulk DE**
+
+```{r}
+## Plot single cell 
+res_ko_vs_wt_only$log2FC = res_ko_vs_wt_only$logFC/log(2)
+res_ko_vs_wt_only$significance <- ifelse(res_ko_vs_wt_only$padj < 0.05 & abs(res_ko_vs_wt_only$log2FC) > 0.2, "Significant", "Not significant")
+
+# Select top 10 most significant genes
+top_genes <- head(res_ko_vs_wt_only[order(res_ko_vs_wt_only$padj), "feature"], 10)
+top_genes <- c(top_genes, 'EMX2', 'GLI3','PAX6','SOX4','SOX11')
+res_ko_vs_wt_only$label <- ifelse(res_ko_vs_wt_only$feature %in% top_genes, res_ko_vs_wt_only$feature, NA)
+
+p1 <- ggplot(res_ko_vs_wt_only, aes(x = log2FC, y = -log10(padj), color = significance)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = label), max.overlaps = 50) +
+  scale_color_manual(values = c("grey", "red")) +
+  theme_minimal() +
+  labs(title = "Volcano Plot (Single-cell DE)", x = "log2 Fold Change", y = "-log10(adjusted p-value)")
+
+## Plot minibulk
+res_df$gene <- rownames(res_df)
+res_df$significance <- ifelse(res_df$padj < 0.05 & abs(res_df$log2FoldChange) > 0.2, "Significant", "Not significant")
+
+top_genes <- head(res_df[order(res_df$padj), "gene"], 10)
+top_genes <- c(top_genes, 'EMX2', 'GLI3','PAX6','SOX4','SOX11')
+res_df$label <- ifelse(res_df$gene %in% top_genes, res_df$gene, NA)
+
+p2 <- ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj), color = significance)) +
+  geom_point(alpha = 0.8) +
+  geom_text_repel(aes(label = label), max.overlaps = 50) +
+  scale_color_manual(values = c("grey", "blue")) +
+  theme_minimal() +
+  labs(title = "Volcano Plot (Pseudo-bulk DE)", x = "log2 Fold Change", y = "-log10(adjusted p-value)")
+
+p1 & NoLegend()| p2 & NoLegend()
+```
+
+## Step 2 - Chromatin Accessibility Profiles Around Markers
+
+So far, we’ve been treating the ATAC assay as just another data layer—but what *additional biological insights* can it provide?
+
+Chromatin accessibility reflects the openness of genomic regions. The more “open” a region is, the more likely it is accessible to transcription factors and other regulatory proteins. This accessibility often correlates with regulatory activity.
+
+The power of *multiome data* is that we can measure both chromatin accessibility and gene expression in the same cells, enabling direct insights into gene regulation.
+
+In this step, we’ll:
+	1.	Use `RegionStats()` to compute base composition information for peaks.
+	2.	Use `LinkPeaks()` to associate peaks with nearby genes based on correlation between accessibility and expression.
+
+This section is mostly inspired from [this section of tutorial](https://github.com/quadbio/scMultiome_analysis_vignette/blob/main/Tutorial.md#step-2-cell-type-genepeak-marker-identification-and-visualization-of-the-chromatin-accessibility-profiles).
+
+```{r}
+library(BSgenome.Hsapiens.UCSC.hg38)
+seurat_sub <- RegionStats(seurat_sub,assay = 'ATAC',
+                      genome = BSgenome.Hsapiens.UCSC.hg38)
+seurat_sub <- LinkPeaks(seurat_sub,
+                    peak.assay = "ATAC",
+                    expression.assay = "RNA",
+                    genes.use = top_genes)
+```
+
+You can visualize peak-gene links with CoveragePlot() and explore specific regulatory relationships using browser-style views.
+
+```{r,fig.height=10, fig.width=8}
+DefaultAssay(seurat_sub) <- "ATAC"
+p1 <- CoveragePlot(seurat_sub,
+                   region = "HES4",
+                   features = "HES4",
+                   group.by = "sample",
+                   extend.upstream = 5000,
+                   extend.downstream = 5000)
+p2 <- CoveragePlot(seurat_sub,
+                   region = "PAX2",
+                   features = "PAX2",
+                   group.by = "sample",
+                   extend.upstream = 5000,
+                   extend.downstream = 5000)
+patchwork::wrap_plots(p1, p2, ncol = 1)
+```
+
+## Step 3 - TF binding motif enrichment analysis
+
+Following the identification of differentially accessible chromatin regions in Step 2, we now want to ask:
+Which transcription factors (TFs) might be driving these changes in chromatin accessibility?
+
+This is commonly done by analyzing enrichment of TF binding motifs in the accessible regions.
+
+### Step 3.1 - Load Motif Database and Add Motifs to the Seurat Object
+
+We’ll use the JASPAR2020 database of vertebrate motifs and annotate peaks with known TF motifs using AddMotifs().
+
+```{r}
+library(TFBSTools)
+library(JASPAR2020)
+
+pfm <- getMatrixSet(
+  x = JASPAR2020,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = FALSE)
+)
+df_pfm <- data.frame(t(sapply(pfm, function(x)
+  c(id=x@ID, name=x@name, symbol=ifelse(!is.null(x@tags$symbol),x@tags$symbol,NA)))))
+
+seurat_sub <- AddMotifs(seurat_sub, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = pfm)
+```
+
+### Step 3.2 - Identify Differentially Accessible Peaks (DAPs) in KO vs WT
+
+Similar to gene expression analysis, we now test for differentially accessible peaks using the ATAC assay.
+
+```{r}
+res_ko_vs_wt_atac <- wilcoxauc(seurat_sub, 'group', seurat_assay = 'ATAC')
+res_ko_vs_wt_atac <- res_ko_vs_wt_atac[res_ko_vs_wt_atac$group == "KO", ]
+top_ko_atac <- 
+  res_ko_vs_wt_atac %>%
+  filter(padj < 0.01 &
+         auc > 0.6) 
+top_ko_atac
+```
+
+You can visualize accessibility differences in specific regions using `CoveragePlot()`:
+
+```{r}
+CoveragePlot(seurat_sub,
+                   region = "chr11-12214953-12215858",
+                   group.by = "sample",
+                   extend.upstream = 5000,
+                   extend.downstream = 5000)
+```
+
+### Step 3.3 Perform Motif Enrichment in Differentially Accessible Peaks
+
+Before running motif enrichment, we match background peaks based on GC content and other region statistics to control for biases.
+
+```{r}
+atac_peaks <- AccessiblePeaks(seurat_sub)
+peaks_matched <- MatchRegionStats(
+  meta.feature = seurat_sub[['ATAC']]@meta.features[atac_peaks, ], # Get the region stats, like GC% etc
+  query.feature = seurat_sub[['ATAC']]@meta.features[top_ko_atac$feature, ])
+```
+
+Now we can perform motif enrichment on the differentially accessible peaks:
+
+```{r}
+motif_enrichment_ko <- FindMotifs(seurat_sub,
+                                  features = top_ko_atac$feature,
+                                  background = peaks_matched) %>%
+  mutate(symbol = setNames(ifelse(is.na(df_pfm$symbol), 
+                                  df_pfm$name, df_pfm$symbol), df_pfm$id)[motif]) %>%
+  mutate(padj = p.adjust(pvalue, method="BH"))
+top_ko_motif <- motif_enrichment_ko %>%
+  filter(pvalue < 0.01 & fold.enrichment > 3) ##NOTE: you can choose the filter criteria
+top_ko_motif
+```
+
+We can visualize the motifs: 
+
+```{r}
+MotifPlot(seurat_sub, motifs = top_ko_motif$motif, ncol=2)
+```
+
+**What does this tell us?**
+
+The enriched motifs in KO-specific accessible peaks may point to TFs that are more active or upstream regulators of the gene expression programs altered by the knockout.
+
+# Part 6 – What’s Next? Additional Downstream Analyses
+
+Now that we’ve covered the core multimodal workflow—visualization, integration, annotation, differential analysis, and motif enrichment. Below are some ideas for additional downstream steps:
+
+1. Gene Regulatory Network (GRN) Inference
+* Use tools like SCENIC, pySCENIC, or GRNBoost to infer transcription factor-target gene networks from gene expression.
+* Combine expression + chromatin accessibility to build multi-layered GRNs, where one layer represents chromatin state and another represents expression.
+
+2. Trajectory and Pseudotime Analysis
+* Apply trajectory inference tools (e.g., Monocle 3, Slingshot, scVelo, CellRank) to model developmental progression.
+* Integrate ATAC and RNA modalities in pseudotime to understand the temporal regulation of both chromatin and gene expression.
+
+3. Cell-Cell Communication
+*	Use tools like CellChat, NATMI, or NicheNet to identify ligand-receptor interactions between cell types.
+*	Combine with chromatin accessibility to understand whether regulatory regions near ligand/receptor genes are open/closed.
+
+4. Chromatin Dynamics
+*	Study differential peak usage across developmental stages, clusters, or conditions.
+*	Visualize specific loci and track accessibility changes over pseudotime or clusters.
+
+5. Enhancer-Gene Link Prediction
+*	Refine peak-to-gene links with additional tools like Cicero, ArchR, or ABC model predictions.
+*	Validate predicted enhancer-gene pairs with literature or external datasets (e.g., ChIP-seq, Hi-C).
+
+6. Functional Enrichment Analysis
+*	DEGs
+*	Genes linked to differential peaks
+*	TFs identified in motif enrichment
+Use packages like clusterProfiler, enrichR, or gprofiler2.
+
+7. Comparative Analysis
+*	Compare different knockouts (KO1 vs KO2), time points, or organoid vs in vivo datasets.
+*	Project your data onto a public atlas to check how close your model is to in vivo.
 
