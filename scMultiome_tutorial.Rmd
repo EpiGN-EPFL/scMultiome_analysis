@@ -292,6 +292,13 @@ VlnPlot(seurat,
         pt.size = 0)
 ```
 
+We can have a closer look at the nucleosome signal, which refers to the  ratio of fragments between 147 bp and 294 bp (mononucleosome) to fragments < 147 bp (nucleosome-free):
+
+```{r}
+seurat$nucleosome_group <- ifelse(seurat$nucleosome_signal > 1, 'NS > 1', 'NS < 1')
+FragmentHistogram(object = seurat,assay = 'ATAC', group.by = 'nucleosome_group')
+```
+
 Based on the distributions, we can set the filtering criteria as:
 
 ```{r}
