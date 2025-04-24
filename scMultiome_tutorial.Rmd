@@ -572,9 +572,9 @@ p2 <- DimPlot(seurat, group.by = "wsnn_res.0.7", reduction = "wnn.umap", label =
 p1 & NoLegend()| p2 & NoLegend() # Combine with patchwork
 ```
 
-At first glance, the two clustering results look quite similar. That’s not surprising—RNA often carries the strongest signal for cell identity, especially for broad cell types.
+At first glance, the two clustering results look quite similar. That’s not surprising—RNA often carries the strongest signal for cell identity, especially for broad cell types. **This is particularly true for this dataset from 3-week-old organoids, where cell type diversity is still relatively limited.**
 
-However, when using the same clustering resolution, adding the ATAC modality via WNN can refine local structures and help separate subpopulations that RNA alone might miss.
+However, when using the same clustering resolution, adding the ATAC modality via WNN can refine local structures and help separate subpopulations that RNA alone might miss. 
 
 Let’s quantify the similarity between RNA-only and WNN clusters using a contingency table:
 
@@ -909,7 +909,8 @@ MotifPlot(seurat_sub, motifs = top_ko_motif$motif, ncol=2)
 
 **What does this tell us?**
 
-The enriched motifs in KO-specific accessible peaks may point to TFs that are more active or upstream regulators of the gene expression programs altered by the knockout.
+The enriched motifs in KO-specific accessible peaks may highlight transcription factors that are more active or act as upstream regulators of the gene expression programs altered by the knockout. If you’re interested, you can experiment with different filtering criteria to see if you can recover the motif of *GLI3*—the transcription factor that was perturbed in this experiment.
+
 
 # Part 6 – What’s Next? Additional Downstream Analyses
 
