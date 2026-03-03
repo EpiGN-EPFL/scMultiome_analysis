@@ -55,7 +55,7 @@ library(DESeq2)
 **Note**: Both `Seurat` and `Signac` are under active development. To ensure compatibility, verify your package versions:
 
 ```{r, results="markup"}
-packageVersion("Seurat")
+packageVersion("Seurat") # >5.0.0 is good
 ```
 
 ## Step 1 - Understand the Experiment Setup
@@ -110,8 +110,10 @@ libraries
 
 Similar to the standard pipeline for single-cell RNA-seq (scRNA-seq) data, we can use the output folder [`filtered_feature_bc_matrix`](https://www.10xgenomics.com/support/software/cell-ranger-arc/latest/analysis/single-library-analysis).
 
+For this tutorial, we provide a subsetted data.
+
 ```{r}
-count_aggr <- Read10X("data/filtered_feature_bc_matrix/")
+count_aggr <- Read10X("data_small//filtered_feature_bc_matrix-small//")
 ```
 
 Since this dataset includes two modalities (RNA & ATAC), the output will contain two matrices. We can check their dimensions as follows:
@@ -211,7 +213,7 @@ dim(filtered_peaks)
 **Important**: There are other ways of how we could reduce the number of `peaks`. For example, as mentioned above, if you are using `cellranger-arc count` outputs directly, you can manually curate a list of peaks that are present in multiple samples (check [here](https://github.com/stuart-lab/signac/discussions/461)). For large datasets, consider leveraging HPC clusters with higher memory capacities.
 
 ```{r}
-frag.file <- "data/atac_fragments.tsv.gz"
+frag.file <- "data_small//atac_fragments.tsv.gz"
 # Finally create the ATAC assay
 seurat[['ATAC']] <-  CreateChromatinAssay(
    counts = filtered_peaks,
@@ -295,7 +297,7 @@ VlnPlot(seurat,
 We can have a closer look at the nucleosome signal, which refers to the  ratio of fragments between 147 bp and 294 bp (mononucleosome) to fragments < 147 bp (nucleosome-free):
 
 ```{r}
-seurat$nucleosome_group <- ifelse(seurat$nucleosome_signal > 1, 'NS > 1', 'NS < 1')
+seurat$nucleosome_group <- ifelse(seurat$nucleosome_signal > 0.5, 'NS > 0.5', 'NS < 0.5')
 FragmentHistogram(object = seurat,assay = 'ATAC', group.by = 'nucleosome_group')
 ```
 
@@ -303,13 +305,13 @@ Based on the distributions, we can set the filtering criteria as:
 
 ```{r}
 seurat <- subset(seurat,
-  subset = nFeature_RNA > 1000 &
-    nFeature_RNA < 7500 &
+  subset = nFeature_RNA > 500 &
+    nFeature_RNA < 6000 &
     percent.mt < 40 &
-    nFeature_ATAC > 1000 &
+    nFeature_ATAC > 500 &
     nFeature_ATAC < 25000 &
     TSS.enrichment > 1 &
-    nucleosome_signal < 1
+    nucleosome_signal < 0.5
 )
 ```
 
@@ -363,10 +365,10 @@ We can use `clustree` to build a clustering tree, which is useful to visualize t
 clustree(seurat, layout="sugiyama", prefix = "RNA_snn_res.")
 ```
 
-**NOTE**: There are indeed many other criteria and algorithms to evalute the number of clusters. Here to make things simple, we just choose one resolution where the clusters are relatively stable.
+**NOTE**: There are indeed many other criteria and algorithms to evaluate the number of clusters. Here to make things simple, we just choose one resolution where the clusters are relatively stable.
 
 ```{r}
-p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.7", 
+p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.4", 
               reduction = "umap_rna", label = T) & NoAxes() & NoLegend()
 p1 | p2
 ```
@@ -511,7 +513,7 @@ DefaultAssay(seurat) <- "RNA"
 Reduce("|", lapply(c("umap_rna",
                      "umap_atac"), function(dr){
   p1 <- DimPlot(seurat,
-                group.by = "RNA_snn_res.0.7",
+                group.by = "RNA_snn_res.0.4",
                 reduction = dr) & NoLegend()
   p2 <- FeaturePlot(seurat,
                     marker_genes,
@@ -540,12 +542,12 @@ seurat <- RunUMAP(seurat, nn.name = "weighted.nn",
                   reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
 
 # Here we just choose one resolution, but feel free to change this parameter
-seurat <- FindClusters(seurat, graph.name = "wsnn", resolution = 0.7, verbose = FALSE)
+seurat <- FindClusters(seurat, graph.name = "wsnn", resolution = 0.4, verbose = FALSE)
 ```
 
 ```{r}
 p1 <- DimPlot(seurat,group.by = "sample",reduction = "wnn.umap") 
-p2 <- DimPlot(seurat,group.by = "wsnn_res.0.7",label=T, reduction = "wnn.umap") & NoLegend()
+p2 <- DimPlot(seurat,group.by = "wsnn_res.0.4",label=T, reduction = "wnn.umap") & NoLegend()
 p3 <- FeaturePlot(seurat,
                   marker_genes,
                   reduction = "wnn.umap") & NoAxes() & NoLegend()
@@ -562,11 +564,11 @@ To begin answering this, let’s compare clustering results:
 
 ```{r}
 # RNA-only clustering 
-p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.7", reduction = "umap_rna", label = T) + 
+p1 <- DimPlot(seurat, group.by = "RNA_snn_res.0.4", reduction = "umap_rna", label = T) + 
   ggtitle("RNA-only Clustering")
 
 # WNN clustering 
-p2 <- DimPlot(seurat, group.by = "wsnn_res.0.7", reduction = "wnn.umap", label = T) + 
+p2 <- DimPlot(seurat, group.by = "wsnn_res.0.4", reduction = "wnn.umap", label = T) + 
   ggtitle("WNN Clustering")
 
 p1 & NoLegend()| p2 & NoLegend() # Combine with patchwork
@@ -579,7 +581,7 @@ However, when using the same clustering resolution, adding the ATAC modality via
 Let’s quantify the similarity between RNA-only and WNN clusters using a contingency table:
 
 ```{r}
-table(RNA=seurat$RNA_snn_res.0.7, WNN=seurat$wsnn_res.0.7)  %>%
+table(RNA=seurat$RNA_snn_res.0.4, WNN=seurat$wsnn_res.0.4)  %>%
   heatmap(xlab='WNN clustering', ylab='RNA-only Clustering', Rowv = NA, Colv = NA)
 ```
 
@@ -591,7 +593,7 @@ In this step, we use the WNN clustering results to annotate cell types based on 
 
 ```{r}
 DefaultAssay(seurat) <- "RNA"
-DE_wnn <- wilcoxauc(seurat, "wsnn_res.0.7", seurat_assay = "RNA")
+DE_wnn <- wilcoxauc(seurat@assays$RNA$counts, y=seurat$wsnn_res.0.4)
 top_markers_wnn <- DE_wnn %>%
   filter(abs(logFC) > log(1.2) &
          padj < 0.01 &
@@ -612,7 +614,7 @@ We provide a curated YAML file from [a published brain organoid study](https://w
 ```{r}
 yaml_data <- read_yaml('data/marker_genes.yaml')
 df <- as.data.frame(do.call(rbind, lapply(yaml_data, as.list)))
-DotPlot(seurat, df$marker_genes, group.by = 'wsnn_res.0.7') + RotatedAxis()
+DotPlot(seurat, df$marker_genes, group.by = 'wsnn_res.0.4') + RotatedAxis()
 ```
 
 To explore more specific subtypes (e.g., neural progenitor cell (NPC) subtypes):
@@ -625,7 +627,7 @@ dups <- unique(all_genes[duplicated(all_genes)])
 npc_markers <- lapply(npc_list$marker_genes, function(genes) {
   setdiff(genes, dups)
 })
-DotPlot(seurat, npc_markers, group.by = 'wsnn_res.0.7') + RotatedAxis()
+DotPlot(seurat, npc_markers, group.by = 'wsnn_res.0.4') + RotatedAxis()
 ```
 
 **Alternative: Use Average Cluster Expression**
@@ -633,7 +635,7 @@ DotPlot(seurat, npc_markers, group.by = 'wsnn_res.0.7') + RotatedAxis()
 In case you think `DotPlot` is very fabricated, you can compute average expression across clusters and visualize known markers in a heatmap:
 
 ```{r, fig.height=10, fig.width=8}
-avg <- AggregateExpression(seurat, assays = 'RNA', group.by='wsnn_res.0.7',
+avg <- AggregateExpression(seurat, assays = 'RNA', group.by='wsnn_res.0.4',
                            return.seurat=TRUE) 
 avg <- NormalizeData(avg)
 avg <- GetAssayData(object = avg, assay = "RNA") 
@@ -655,13 +657,13 @@ Using a combination of known markers and clustering structure, we can now assign
 ```{r}
 meta <- seurat@meta.data %>%
   mutate(stage=case_when(
-    wsnn_res.0.7 %in% c(0, 14, 3, 9) ~ 'telencephalon',
-    wsnn_res.0.7 %in% c(1, 2, 5, 6, 8, 13) ~ 'early',
-    wsnn_res.0.7 %in% c(4, 7, 11, 15, 19) ~ 'nontelencephalon',
-    wsnn_res.0.7 %in% c(10, 12, 17, 18) ~ 'other',
-    wsnn_res.0.7 %in% c(16) ~ 'neuron'
+    wsnn_res.0.4 %in% c(0, 4, 5) ~ 'telencephalon',
+    wsnn_res.0.4 %in% c(1, 2, 6) ~ 'early',
+    wsnn_res.0.4 %in% c(3, 7, 11) ~ 'nontelencephalon',
+    wsnn_res.0.4 %in% c(10, 8, 9) ~ 'other',
+    wsnn_res.0.4 %in% c(12) ~ 'neuron'
   )) %>%
-  mutate(celltype=interaction(stage, wsnn_res.0.7, drop = TRUE))
+  mutate(celltype=interaction(stage, wsnn_res.0.4, drop = TRUE))
 
 seurat <- AddMetaData(seurat, meta)
 p1 <- DimPlot(seurat,
@@ -709,7 +711,7 @@ To keep things simple, we combine KO1 and KO2 into a single group and compare th
 
 ```{r}
 seurat_sub$group <- ifelse(seurat_sub$sample %in% c("KO1", "KO2"), "KO", "WT")
-res_ko_vs_wt <- wilcoxauc(seurat_sub, 'group', seurat_assay = 'RNA')
+res_ko_vs_wt <- wilcoxauc(X=GetAssayData(seurat_sub), y = seurat_sub$group)
 res_ko_vs_wt_only <- res_ko_vs_wt[res_ko_vs_wt$group == "KO", ]
 res_ko_vs_wt_only %>%
   filter(abs(logFC) > log(1.2) &
@@ -857,12 +859,12 @@ seurat_sub <- AddMotifs(seurat_sub, genome = BSgenome.Hsapiens.UCSC.hg38, pfm = 
 Similar to gene expression analysis, we now test for differentially accessible peaks using the ATAC assay.
 
 ```{r}
-res_ko_vs_wt_atac <- wilcoxauc(seurat_sub, 'group', seurat_assay = 'ATAC')
+res_ko_vs_wt_atac <- wilcoxauc(X=seurat_sub@assays$ATAC$counts, y = seurat_sub$group)
 res_ko_vs_wt_atac <- res_ko_vs_wt_atac[res_ko_vs_wt_atac$group == "KO", ]
 top_ko_atac <- 
   res_ko_vs_wt_atac %>%
   filter(padj < 0.01 &
-         auc > 0.6) 
+         auc > 0.58) 
 top_ko_atac
 ```
 
@@ -870,7 +872,7 @@ You can visualize accessibility differences in specific regions using `CoverageP
 
 ```{r}
 CoveragePlot(seurat_sub,
-                   region = "chr11-12214953-12215858",
+                   region = "chr5-171422932-171423823",
                    group.by = "sample",
                    extend.upstream = 5000,
                    extend.downstream = 5000)
@@ -897,7 +899,7 @@ motif_enrichment_ko <- FindMotifs(seurat_sub,
                                   df_pfm$name, df_pfm$symbol), df_pfm$id)[motif]) %>%
   mutate(padj = p.adjust(pvalue, method="BH"))
 top_ko_motif <- motif_enrichment_ko %>%
-  filter(pvalue < 0.01 & fold.enrichment > 3) ##NOTE: you can choose the filter criteria
+  filter(pvalue < 0.05 & fold.enrichment > 5) ##NOTE: you can choose the filter criteria
 top_ko_motif
 ```
 

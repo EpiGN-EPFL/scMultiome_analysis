@@ -1,3 +1,5 @@
 data/
 out/
+data_small/
 .DS_Store
+.Rhistory
