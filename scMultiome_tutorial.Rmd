@@ -1,7 +1,7 @@
 ---
 title: "Single cell RNA+ATAC tutorial"
 author: "Hanrong Hu"
-date: "2025-02-25"
+date: "2026-04-08"
 output: html_notebook
 ---
 
@@ -654,14 +654,17 @@ pheatmap(avg[unique(rownames(marker_df)), ],
 
 Using a combination of known markers and clustering structure, we can now assign broad annotations to WNN clusters:
 
+
 ```{r}
 meta <- seurat@meta.data %>%
   mutate(stage=case_when(
-    wsnn_res.0.4 %in% c(0, 4, 5) ~ 'telencephalon',
-    wsnn_res.0.4 %in% c(1, 2, 6) ~ 'early',
-    wsnn_res.0.4 %in% c(3, 7, 11) ~ 'nontelencephalon',
-    wsnn_res.0.4 %in% c(10, 8, 9) ~ 'other',
-    wsnn_res.0.4 %in% c(12) ~ 'neuron'
+    wsnn_res.0.4 %in% c(0, 2) ~ 'telencephalon',
+    wsnn_res.0.4 %in% c(1, 3, 4, 10) ~ 'early',
+    wsnn_res.0.4 %in% c(6) ~ 'nontelencephalon',
+    wsnn_res.0.4 %in% c(7, 9) ~ 'other',
+    wsnn_res.0.4 %in% c(11) ~ 'neuron',
+    wsnn_res.0.4 %in% c(5) ~ 'inhibitory_neuron',
+    wsnn_res.0.4 %in% c(8) ~ 'excitatory_neuron'
   )) %>%
   mutate(celltype=interaction(stage, wsnn_res.0.4, drop = TRUE))
 
@@ -864,7 +867,7 @@ res_ko_vs_wt_atac <- res_ko_vs_wt_atac[res_ko_vs_wt_atac$group == "KO", ]
 top_ko_atac <- 
   res_ko_vs_wt_atac %>%
   filter(padj < 0.01 &
-         auc > 0.58) 
+         auc > 0.6) 
 top_ko_atac
 ```
 
@@ -899,7 +902,7 @@ motif_enrichment_ko <- FindMotifs(seurat_sub,
                                   df_pfm$name, df_pfm$symbol), df_pfm$id)[motif]) %>%
   mutate(padj = p.adjust(pvalue, method="BH"))
 top_ko_motif <- motif_enrichment_ko %>%
-  filter(pvalue < 0.05 & fold.enrichment > 5) ##NOTE: you can choose the filter criteria
+  filter(pvalue < 0.05 & fold.enrichment > 4) ##NOTE: you can choose the filter criteria
 top_ko_motif
 ```
 
