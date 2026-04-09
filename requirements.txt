@@ -1,0 +1,13 @@
+# enviroment requirements for scMultiome analysis python>3.10<3.14
+scanpy
+anndata
+numpy
+pandas
+scipy
+matplotlib
+MACS3
+snapatac2
+scikit-misc # for some thing scanpy uses
+igraph # also for scanpy functions (clustering)
+leidenalg # also for scanpy functions (clustering)
+pydeseq2 # for bulk-like DE analysis on the aggregated data
